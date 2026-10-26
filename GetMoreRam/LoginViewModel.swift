@@ -77,6 +77,20 @@ class LoginViewModel: ObservableObject {
         }
 
         do {
+            let address = DataManager.shared.model.anisetteServerURL
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let serverURL = URL(string: address),
+                  let scheme = serverURL.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme),
+                  serverURL.host != nil,
+                  serverURL.user == nil,
+                  serverURL.password == nil else {
+                throw "Enter a valid Anisette Server URL, such as https://new.ani.sidestore.io."
+            }
+            if AnisetteDataHelper.shared.url != serverURL {
+                AnisetteDataHelper.shared.resetClientInfo()
+            }
+            AnisetteDataHelper.shared.url = serverURL
             let anisetteData = try await AnisetteDataHelper.shared.getAnisetteData()
 
             let (account, session) = try await AppleAPI.shared.authenticate(appleID: appleID, password: password, anisetteData: anisetteData) { [weak self] completionHandler in

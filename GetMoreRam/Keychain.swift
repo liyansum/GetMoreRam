@@ -80,6 +80,12 @@ public class Keychain
     
     @KeychainItem(key: "adiPb")
     public var adiPb: String?
+
+    @KeychainItem(key: "anisetteIdentitySource")
+    public var anisetteIdentitySource: String?
+
+    @KeychainItem(key: "anisetteIdentityProfile")
+    public var anisetteIdentityProfile: String?
     
     private init()
     {

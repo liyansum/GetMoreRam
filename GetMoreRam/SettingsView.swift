@@ -23,6 +23,11 @@ struct SettingsView: View {
     @State private var importResultShow = false
     @State private var importResultInfo = ""
     @State private var isImportingSideStoreAccount = false
+    @State private var isSideStorePasswordPromptPresented = false
+    @State private var pendingSideStoreAccountData: Data?
+    @State private var sideStoreExportPassword = ""
+    @State private var sideStoreImportError = ""
+    @State private var pendingSideStoreImportSuccess: String?
     
 
     var body: some View {
@@ -67,7 +72,7 @@ struct SettingsView: View {
                     cleanUp()
                 }
             } footer: {
-                Text("If something went wrong during signing in, please try to clean up the keychain, repoen the app and try again. \n \nIf you use SideStore and are already signed in, please also try exporting SideStore Account from SideStore settings and import it here to sign in.")
+                Text("Import a JSON or encrypted .sideconf account exported from SideStore. Enter the export password when prompted, then tap Sign in. If the export omits your Apple ID password, enter it on the sign-in screen.\n\nClean Up Keychain removes this app's saved account and Anisette identity.")
             }
         }
         .alert("Error", isPresented: $errorShow){
@@ -84,7 +89,7 @@ struct SettingsView: View {
         }
         .fileImporter(
             isPresented: $isImportingSideStoreAccount,
-            allowedContentTypes: [.json],
+            allowedContentTypes: [.data],
             allowsMultipleSelection: false
         ) { result in
             importSideStoreAccount(result)
@@ -92,11 +97,63 @@ struct SettingsView: View {
         
         .sheet(isPresented: $viewModel.loginModalShow, onDismiss: {
             viewModel.cancelAuthentication()
+            viewModel.appleID = ""
+            viewModel.password = ""
+            viewModel.verificationCode = ""
+            viewModel.logs = ""
         }) {
             loginModal
         }
         .sheet(isPresented: $viewModel.teamSelectionShow) {
             teamSelectionView
+        }
+        .sheet(isPresented: $isSideStorePasswordPromptPresented, onDismiss: {
+            let successMessage = pendingSideStoreImportSuccess
+            pendingSideStoreAccountData = nil
+            sideStoreExportPassword = ""
+            sideStoreImportError = ""
+            pendingSideStoreImportSuccess = nil
+            if let successMessage {
+                importResultInfo = successMessage
+                importResultShow = true
+            }
+        }) {
+            sideStoreExportPasswordSheet
+        }
+    }
+
+    var sideStoreExportPasswordSheet: some View {
+        NavigationView {
+            Form {
+                Section {
+                    SecureField("Export password", text: $sideStoreExportPassword)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } footer: {
+                    Text("Enter the password chosen when exporting this .sideconf file from SideStore. Decryption takes place on this device.")
+                }
+                if !sideStoreImportError.isEmpty {
+                    Section {
+                        Text(sideStoreImportError)
+                            .foregroundStyle(.red)
+                    }
+                }
+                Section {
+                    Button("Import Account") {
+                        decryptSideStoreAccount()
+                    }
+                }
+            }
+            .navigationTitle("SideStore Export")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", role: .cancel) {
+                        pendingSideStoreImportSuccess = nil
+                        isSideStorePasswordPromptPresented = false
+                    }
+                }
+            }
         }
     }
     
@@ -234,8 +291,15 @@ struct SettingsView: View {
     }
     
     func cleanUp() {
+        viewModel.cancelAuthentication()
+        viewModel.appleID = ""
+        viewModel.password = ""
+        viewModel.verificationCode = ""
+        viewModel.logs = ""
         Keychain.shared.adiPb = nil
         Keychain.shared.identifier = nil
+        Keychain.shared.anisetteIdentitySource = nil
+        Keychain.shared.anisetteIdentityProfile = nil
         Keychain.shared.appleIDPassword = nil
         Keychain.shared.appleIDEmailAddress = nil
         AnisetteDataHelper.shared.resetClientInfo()
@@ -262,20 +326,22 @@ struct SettingsView: View {
                 }
             }
             
+            if let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+               fileSize > 16 * 1024 * 1024 {
+                throw "This file is too large for a SideStore account export. Choose a JSON or .sideconf account file."
+            }
             let data = try Data(contentsOf: url)
-            let account = try SideStoreAccountImporter.importAccount(from: data)
-            
-            viewModel.appleID = account.email
-            viewModel.password = account.password
-            sharedModel.session = nil
-            sharedModel.account = nil
-            sharedModel.team = nil
-            sharedModel.isLogin = false
-            viewModel.availableTeams = []
-            viewModel.teamSelectionShow = false
-            email = account.email
-            teamId = ""
-            importResultInfo = "Imported \(account.email).\nTap \"Sign In\" to continue."
+            if SideStoreAccountImporter.requiresPassword(for: data) {
+                pendingSideStoreAccountData = data
+                sideStoreExportPassword = ""
+                sideStoreImportError = ""
+                pendingSideStoreImportSuccess = nil
+                isSideStorePasswordPromptPresented = true
+                return
+            }
+            let account = try SideStoreAccountImporter.decodeAccount(from: data)
+            let storedAccount = try SideStoreAccountImporter.storeAccount(account)
+            importResultInfo = applyImportedSideStoreAccount(storedAccount)
             importResultShow = true
         } catch {
             errorInfo = error.detailedDescription
@@ -283,6 +349,37 @@ struct SettingsView: View {
         }
     }
     
+    func decryptSideStoreAccount() {
+        guard let data = pendingSideStoreAccountData else { return }
+        do {
+            let account = try SideStoreAccountImporter.decodeAccount(
+                from: data, filePassword: sideStoreExportPassword
+            )
+            let storedAccount = try SideStoreAccountImporter.storeAccount(account)
+            pendingSideStoreImportSuccess = applyImportedSideStoreAccount(storedAccount)
+            isSideStorePasswordPromptPresented = false
+        } catch {
+            sideStoreImportError = error.detailedDescription
+        }
+    }
+
+    func applyImportedSideStoreAccount(_ account: SideStoreAccount) -> String {
+        viewModel.appleID = account.email
+        viewModel.password = account.password
+        sharedModel.session = nil
+        sharedModel.account = nil
+        sharedModel.team = nil
+        sharedModel.isLogin = false
+        viewModel.availableTeams = []
+        viewModel.teamSelectionShow = false
+        email = account.email
+        teamId = ""
+        if account.hasApplePassword {
+            return "Imported \(account.email) and its Anisette identity.\nTap Sign in to authenticate."
+        }
+        return "Imported \(account.email) and its Anisette identity.\nTap Sign in and enter your Apple ID password to authenticate."
+    }
+
     func selectTeam(_ team: Team) {
         sharedModel.team = team
         sharedModel.isLogin = true
