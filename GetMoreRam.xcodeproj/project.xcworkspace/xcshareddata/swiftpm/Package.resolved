@@ -31,10 +31,10 @@
     {
       "identity" : "stossign",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/stossy11/StosSign",
+      "location" : "https://github.com/liyansum/StosSign",
       "state" : {
         "branch" : "main",
-        "revision" : "01dd7bc4f5084ade9e2ebbc7e338dc2e3f454d77"
+        "revision" : "541c3f3bbe9b6eb2d6ca21641fb3c4fa103473af"
       }
     },
     {
