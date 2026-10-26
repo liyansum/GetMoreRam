@@ -10,10 +10,13 @@
 		4E9544D130558D4400540EF8 /* StosSign_API in Frameworks */ = {isa = PBXBuildFile; productRef = 4E9544D030558D4400540EF8 /* StosSign_API */; };
 		4E9544D330558D4400540EF8 /* StosSign_Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 4E9544D230558D4400540EF8 /* StosSign_Auth */; };
 		4E9544D530558D4400540EF8 /* StosSign_Common in Frameworks */ = {isa = PBXBuildFile; productRef = 4E9544D430558D4400540EF8 /* StosSign_Common */; };
+		A10000000000000000000001 /* AnisetteKit in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000002 /* AnisetteKit */; };
+		A10000000000000000000004 /* ADI in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* ADI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		173496F02D847E82007994DB /* GetMoreRam.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GetMoreRam.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000005 /* ADI */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ADI; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +48,7 @@
 				4E9544D330558D4400540EF8 /* StosSign_Auth in Frameworks */,
 				4E9544D130558D4400540EF8 /* StosSign_API in Frameworks */,
 				4E9544D530558D4400540EF8 /* StosSign_Common in Frameworks */,
+				A10000000000000000000001 /* AnisetteKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -55,6 +59,7 @@
 			isa = PBXGroup;
 			children = (
 				173496F22D847E82007994DB /* GetMoreRam */,
+				A10000000000000000000005 /* ADI */,
 				173497042D847F5A007994DB /* Frameworks */,
 				173496F12D847E82007994DB /* Products */,
 			);
@@ -98,6 +103,7 @@
 				4E9544D030558D4400540EF8 /* StosSign_API */,
 				4E9544D230558D4400540EF8 /* StosSign_Auth */,
 				4E9544D430558D4400540EF8 /* StosSign_Common */,
+				A10000000000000000000002 /* AnisetteKit */,
 			);
 			productName = GetMoreRam;
 			productReference = 173496F02D847E82007994DB /* GetMoreRam.app */;
@@ -129,6 +135,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4E9544CF30558D4400540EF8 /* XCRemoteSwiftPackageReference "StosSign" */,
+				A10000000000000000000003 /* XCRemoteSwiftPackageReference "AnisetteKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 173496F12D847E82007994DB /* Products */;
@@ -145,6 +152,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000004 /* ADI in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -376,6 +384,14 @@
 				kind = branch;
 			};
 		};
+		A10000000000000000000003 /* XCRemoteSwiftPackageReference "AnisetteKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mahee96/AnisetteKit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -393,6 +409,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4E9544CF30558D4400540EF8 /* XCRemoteSwiftPackageReference "StosSign" */;
 			productName = StosSign_Common;
+		};
+		A10000000000000000000002 /* AnisetteKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000003 /* XCRemoteSwiftPackageReference "AnisetteKit" */;
+			productName = AnisetteKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

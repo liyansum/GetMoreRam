@@ -215,10 +215,15 @@ enum SideStoreAccountImporter {
     private static func validated(_ account: SideStoreAccount) throws -> SideStoreAccount {
         let email = account.email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !email.isEmpty else { throw SideStoreAccountImportError.missingRequiredField("email") }
-        guard !account.adiPB.isEmpty else { throw SideStoreAccountImportError.missingRequiredField("anisetteAdiBlob / adiPB") }
         guard !account.localUser.isEmpty else { throw SideStoreAccountImportError.missingRequiredField("anisetteIdentifier / local_user") }
-        guard let blob = Data(base64Encoded: account.adiPB), !blob.isEmpty else {
-            throw SideStoreAccountImportError.invalidAdiPB
+        // The exported adi.pb is bound to the Anisette backend that provisioned it, which for
+        // SideStore is its own on-device ADI. It can never be reused against another backend,
+        // so it is optional here: the local Anisette provisions a matching adi.pb for the same
+        // identifier on first sign-in. A present blob is still validated for shape.
+        if !account.adiPB.isEmpty {
+            guard let blob = Data(base64Encoded: account.adiPB), !blob.isEmpty else {
+                throw SideStoreAccountImportError.invalidAdiPB
+            }
         }
         guard account.identityFormat != nil else {
             throw SideStoreAccountImportError.invalidLocalUser

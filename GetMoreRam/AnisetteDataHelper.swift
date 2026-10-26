@@ -43,7 +43,19 @@ final class AnisetteDataHelper
         identity = nil
     }
 
+    /// On-device Anisette is the default: it needs no server, so an account imported from
+    /// SideStore signs in directly instead of failing with -45061 on a public server.
+    static var useLocalAnisette: Bool {
+        UserDefaults.standard.object(forKey: "UseLocalAnisette") as? Bool ?? true
+    }
+
     func getAnisetteData(refresh: Bool = false) async throws -> AnisetteData {
+        if Self.useLocalAnisette {
+            let identifier = try localIdentifierUUID()
+            printOut("Anisette: on-device ADI emulation, provisioning locally (no server involved).")
+            return try await LocalAnisette.shared.anisetteData(for: identifier)
+        }
+
         guard let url else { throw "No Anisette Server Found!" }
         printOut("Anisette server host: \(url.host ?? "(unavailable)")")
         if let identifier = Keychain.shared.identifier,
@@ -54,6 +66,38 @@ final class AnisetteDataHelper
             throw "The imported SideStore identity is incomplete. Its stored identity has been preserved. Export the account again from SideStore and re-import it."
         }
         return try await provision()
+    }
+
+    /// Resolves the stored identifier (UUID or base64 encoded 16 bytes) to a UUID.
+    /// A SideStore export is reused as-is so the device identity stays stable; if there is
+    /// none, a fresh one is generated. Either way the `adi.pb` is provisioned locally.
+    private func localIdentifierUUID() throws -> UUID {
+        if let stored = Keychain.shared.identifier, let uuid = Self.uuid(from: stored) {
+            return uuid
+        }
+        var bytes = [UInt8](repeating: 0, count: 16)
+        let status = bytes.withUnsafeMutableBytes { buffer -> OSStatus in
+            guard let baseAddress = buffer.baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, buffer.count, baseAddress)
+        }
+        guard status == errSecSuccess else { throw "Could not generate a local Anisette identity." }
+
+        let encoded = Data(bytes).base64EncodedString()
+        Keychain.shared.identifier = encoded
+        Keychain.shared.anisetteIdentitySource = "generated"
+        Keychain.shared.anisetteIdentityProfile = "sidestore2"
+        guard let uuid = Self.uuid(from: encoded) else {
+            throw "The local Anisette identity is unavailable."
+        }
+        printOut("Anisette: generated a new local identity.")
+        return uuid
+    }
+
+    static func uuid(from identifier: String) -> UUID? {
+        if let uuid = UUID(uuidString: identifier) { return uuid }
+        guard let data = Data(base64Encoded: identifier), data.count == 16 else { return nil }
+        return UUID(uuid: (data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+                           data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]))
     }
 
     // MARK: - COMMON

@@ -29,6 +29,8 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: recursive
+      - name: Fetch on-device Anisette libraries
+        run: python3 Scripts/fetch_adi_libraries.py
       - name: Verify SideStore account import
         run: |
           xcrun swiftc GetMoreRam/SideStoreAccount.swift Tests/SideStoreImport/main.swift -o "$RUNNER_TEMP/sideconf-check"

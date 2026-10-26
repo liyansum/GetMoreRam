@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State var teamId = ""
     @StateObject var viewModel : LoginViewModel
     @EnvironmentObject private var sharedModel : SharedModel
+    @AppStorage("UseLocalAnisette") private var useLocalAnisette = true
     
     @State private var errorShow = false
     @State private var errorInfo = ""
@@ -59,12 +60,18 @@ struct SettingsView: View {
             }
             
             Section {
+                Toggle("On-device Anisette", isOn: $useLocalAnisette)
                 HStack {
                     Text("Anisette Server URL")
                     Spacer()
                     TextField("", text: $sharedModel.anisetteServerURL)
                         .multilineTextAlignment(.trailing)
+                        .disabled(useLocalAnisette)
                 }
+            } header: {
+                Text("Anisette")
+            } footer: {
+                Text("On-device Anisette generates headers locally with Apple's emulated ADI libraries, so no Anisette server is contacted. An account imported from SideStore then signs in directly instead of being rejected with -45061. Turn this off to use the server above.")
             }
             
             Section {
