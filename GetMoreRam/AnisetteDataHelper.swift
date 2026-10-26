@@ -49,11 +49,20 @@ final class AnisetteDataHelper
         UserDefaults.standard.object(forKey: "UseLocalAnisette") as? Bool ?? true
     }
 
+    /// The device identity presented to Apple. Must stay stable between provisioning and
+    /// signing in, otherwise Apple answers -80045.
+    static var clientProfile: AnisetteClientProfile {
+        let key = UserDefaults.standard.string(forKey: "AnisetteClientProfile")
+            ?? AnisetteClientProfile.android.key
+        return AnisetteClientProfile.resolved(key: key)
+    }
+
     func getAnisetteData(refresh: Bool = false) async throws -> AnisetteData {
         if Self.useLocalAnisette {
             let identifier = try localIdentifierUUID()
-            printOut("Anisette: on-device ADI emulation, provisioning locally (no server involved).")
-            return try await LocalAnisette.shared.anisetteData(for: identifier)
+            let profile = Self.clientProfile
+            printOut("Anisette: on-device ADI emulation, client profile \(profile.name), provisioning locally (no server involved).")
+            return try await LocalAnisette.shared.anisetteData(for: identifier, profile: profile)
         }
 
         guard let url else { throw "No Anisette Server Found!" }

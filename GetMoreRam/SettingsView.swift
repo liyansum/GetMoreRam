@@ -18,6 +18,7 @@ struct SettingsView: View {
     @StateObject var viewModel : LoginViewModel
     @EnvironmentObject private var sharedModel : SharedModel
     @AppStorage("UseLocalAnisette") private var useLocalAnisette = true
+    @AppStorage("AnisetteClientProfile") private var clientProfileKey = AnisetteClientProfile.android.key
     
     @State private var errorShow = false
     @State private var errorInfo = ""
@@ -61,6 +62,12 @@ struct SettingsView: View {
             
             Section {
                 Toggle("On-device Anisette", isOn: $useLocalAnisette)
+                Picker("Client Profile", selection: $clientProfileKey) {
+                    ForEach(AnisetteClientProfile.all, id: \.key) { profile in
+                        Text(profile.name).tag(profile.key)
+                    }
+                }
+                .disabled(!useLocalAnisette)
                 HStack {
                     Text("Anisette Server URL")
                     Spacer()
@@ -71,7 +78,7 @@ struct SettingsView: View {
             } header: {
                 Text("Anisette")
             } footer: {
-                Text("On-device Anisette generates headers locally with Apple's emulated ADI libraries, so no Anisette server is contacted. An account imported from SideStore then signs in directly instead of being rejected with -45061. Turn this off to use the server above.")
+                Text("On-device Anisette generates headers locally with Apple's emulated ADI libraries, so no Anisette server is contacted. An account imported from SideStore then signs in directly instead of being rejected with -45061.\n\nThe client profile is the device identity reported to Apple. Changing it provisions a fresh local identity, because a provisioned identity only works with the profile that created it. If signing in fails with -80045, switch the profile: Apple rejects a client info that does not match the machine.")
             }
             
             Section {

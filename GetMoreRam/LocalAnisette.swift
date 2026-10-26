@@ -11,6 +11,50 @@ import StosSign_API
 import StosSign_Auth
 import StosSign_Common
 
+/// The device identity an Anisette client presents to Apple.
+///
+/// Apple validates that the client info is coherent with the rest of the request (locale,
+/// time zone, and the machine that was provisioned). A mismatch is answered with `-80045`
+/// ("This action cannot be completed at this time"), so the profile used for provisioning and
+/// the profile used for signing in must be the same one.
+struct AnisetteClientProfile: Equatable {
+    let key: String
+    let name: String
+    let clientInfo: String
+    let userAgent: String
+    let usesDeviceLocale: Bool
+
+    static let android = AnisetteClientProfile(
+        key: "android",
+        name: "Android (Pixel 7)",
+        clientInfo: "<Pixel 7> <Android;14;UQ1A.240205.002> <com.apple.AuthKit/1 (com.apple.akd/1.0)>",
+        userAgent: "AuthKit/1 (Macintosh; OS X 27.0) (com.apple.akd/1.0)",
+        usesDeviceLocale: true
+    )
+
+    static let macOS = AnisetteClientProfile(
+        key: "macos",
+        name: "macOS (MacBookPro18,3)",
+        clientInfo: "<MacBookPro18,3> <macOS;26.6;25F84> <com.apple.AuthKit/1 (com.apple.akd/1.0)>",
+        userAgent: "AuthKit/1 (Macintosh; OS X 26.6) (com.apple.akd/1.0)",
+        usesDeviceLocale: false
+    )
+
+    static let all: [AnisetteClientProfile] = [.android, .macOS]
+
+    static func resolved(key: String) -> AnisetteClientProfile {
+        all.first { $0.key == key } ?? .android
+    }
+
+    var locale: String {
+        usesDeviceLocale ? Locale.current.identifier : "en_US"
+    }
+
+    var timeZone: String {
+        usesDeviceLocale ? (TimeZone.current.abbreviation() ?? "UTC") : "UTC"
+    }
+}
+
 /// Generates Anisette headers without talking to any Anisette server.
 ///
 /// Apple's ADI libraries (`libCoreADI.so`, `libstoreservicescore.so`) are Linux AArch64 ELF
@@ -49,6 +93,7 @@ final class LocalAnisette: @unchecked Sendable {
 
     private let rootDirectory: URL
     private var cachedClient: AnisetteClient?
+    private var cachedProfileKey: String?
     private let lock = NSLock()
 
     private init() {
@@ -57,16 +102,17 @@ final class LocalAnisette: @unchecked Sendable {
     }
 
     /// Returns Anisette headers for `identifier`, provisioning locally on first use.
-    func anisetteData(for identifier: UUID) async throws -> AnisetteData {
-        let client = try makeClient()
+    func anisetteData(for identifier: UUID, profile: AnisetteClientProfile) async throws -> AnisetteData {
+        let client = try makeClient(profile: profile)
         let (rawHeaders, _) = try await client.getAnisetteData(
             identifier: identifier,
             storage: .disk,
-            headers: Self.requestHeaders()
+            headers: Self.requestHeaders(for: profile)
         )
         return try Self.makeAnisetteData(
             from: AnisetteRequestHeaders(rawHeaders: rawHeaders),
-            identifier: identifier
+            identifier: identifier,
+            profile: profile
         )
     }
 
@@ -75,6 +121,17 @@ final class LocalAnisette: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         cachedClient = nil
+        cachedProfileKey = nil
+        purgeProvisioningStorage()
+    }
+
+    // MARK: - Client
+
+    private var profileRecordURL: URL {
+        rootDirectory.appendingPathComponent("client-profile.txt")
+    }
+
+    private func purgeProvisioningStorage() {
         let fileManager = FileManager.default
         let items = (try? fileManager.contentsOfDirectory(at: rootDirectory, includingPropertiesForKeys: nil)) ?? []
         for item in items where item.lastPathComponent != "ADI" {
@@ -82,23 +139,36 @@ final class LocalAnisette: @unchecked Sendable {
         }
     }
 
-    // MARK: - Client
+    /// A provisioned `adi.pb` only works with the client profile that created it, so a profile
+    /// change has to invalidate the stored identity. This also covers the upgrade case where an
+    /// `adi.pb` was provisioned by an earlier build with a different client info.
+    private func prepareProvisioningStorage(for profile: AnisetteClientProfile) throws {
+        let stored = (try? String(contentsOf: profileRecordURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard stored != profile.key else { return }
 
-    private func makeClient() throws -> AnisetteClient {
+        purgeProvisioningStorage()
+        try profile.key.write(to: profileRecordURL, atomically: true, encoding: .utf8)
+    }
+
+    private func makeClient(profile: AnisetteClientProfile) throws -> AnisetteClient {
         lock.lock()
         defer { lock.unlock() }
-        if let cachedClient { return cachedClient }
+
+        if cachedProfileKey == profile.key, let cachedClient { return cachedClient }
 
         let libraries = try librariesDirectory()
         try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+        try prepareProvisioningStorage(for: profile)
 
         let client = try AnisetteClient(
             provisioningDir: rootDirectory,
-            clientInfo: AnisetteConstants.defaultClientInfo,
-            userAgent: AnisetteConstants.defaultUserAgent,
+            clientInfo: profile.clientInfo,
+            userAgent: profile.userAgent,
             libraryDirectoryResolver: { libraries }
         )
         cachedClient = client
+        cachedProfileKey = profile.key
         return client
     }
 
@@ -123,20 +193,23 @@ final class LocalAnisette: @unchecked Sendable {
 
     // MARK: - Conversion
 
-    private static func requestHeaders() -> AnisetteRequestHeaders {
+    private static func requestHeaders(for profile: AnisetteClientProfile) -> AnisetteRequestHeaders {
         var headers = AnisetteRequestHeaders.defaultHeaders
+        headers.clientInfo = profile.clientInfo
+        headers.userAgent = profile.userAgent
         headers.localUserID = AnisetteConstants.defaultLocalUserID
         headers.routingInfo = AnisetteConstants.defaultRoutingInfo
         headers.serialNumber = AnisetteConstants.defaultSerialNumber
-        headers.locale = AnisetteConstants.defaultLocale
-        headers.timeZone = AnisetteConstants.defaultTimeZone
+        headers.locale = profile.locale
+        headers.timeZone = profile.timeZone
         return headers
     }
 
     /// Converts AnisetteKit headers into the StosSign `AnisetteData` the signing code expects.
     private static func makeAnisetteData(
         from headers: AnisetteRequestHeaders,
-        identifier: UUID
+        identifier: UUID,
+        profile: AnisetteClientProfile
     ) throws -> AnisetteData {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: AnisetteConstants.posixLocaleIdentifier)
@@ -147,12 +220,12 @@ final class LocalAnisette: @unchecked Sendable {
         var json: [String: String] = [
             "deviceSerialNumber": headers.serialNumber ?? AnisetteConstants.defaultSerialNumber,
             "routingInfo": headers.routingInfo ?? AnisetteConstants.defaultRoutingInfo,
-            "deviceDescription": headers.clientInfo ?? AnisetteConstants.defaultClientInfo,
+            "deviceDescription": profile.clientInfo,
             "localUserID": headers.localUserID ?? AnisetteConstants.defaultLocalUserID,
             "deviceUniqueIdentifier": headers.deviceID ?? identifier.uuidString.uppercased(),
             "date": headers.clientTime ?? formatter.string(from: headers.date ?? Date()),
-            "locale": headers.locale ?? AnisetteConstants.defaultLocale,
-            "timeZone": headers.timeZone ?? AnisetteConstants.defaultTimeZone
+            "locale": profile.locale,
+            "timeZone": profile.timeZone
         ]
         if let machineID = headers.machineID { json["machineID"] = machineID }
         if let oneTimePassword = headers.oneTimePassword { json["oneTimePassword"] = oneTimePassword }
